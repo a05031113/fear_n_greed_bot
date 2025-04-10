@@ -1,0 +1,7 @@
+requests
+pandas
+matplotlib
+python-telegram-bot[ext]
+python-dotenv
+pytz
+APScheduler 

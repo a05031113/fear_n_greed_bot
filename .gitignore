@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables
+.env
+
+# Generated files
+*.png
+
+# Temporary files
+temp_*.py
+
+# IDE / OS specific
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store 
