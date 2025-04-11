@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+import datetime
 
 # 加載環境變數
 load_dotenv()
@@ -450,14 +451,14 @@ def create_component_chart(df, title: str, filename: str, color='#1f77b4'):
         logger.error(f"創建組件圖表 '{title}' 時發生錯誤: {e}", exc_info=True)
         return None
 
-async def scheduled_feargreed(app: Application):
+async def scheduled_feargreed(context):
     """定時執行的任務：發送總體指數和圖表"""
     logger.info("執行定時任務：scheduled_feargreed")
     if not TELEGRAM_CHAT_ID:
         logger.error("定時任務 scheduled_feargreed 無法執行：未設定 TELEGRAM_CHAT_ID")
         return
 
-    bot = app.bot
+    bot = context.bot
     chat_id = TELEGRAM_CHAT_ID
 
     try:
@@ -509,14 +510,14 @@ async def scheduled_feargreed(app: Application):
         except Exception as inner_e:
             logger.error(f"發送 scheduled_feargreed 錯誤通知時也發生錯誤: {inner_e}")
 
-async def scheduled_components(app: Application):
+async def scheduled_components(context):
     """定時執行的任務：發送各組成指標圖表"""
     logger.info("執行定時任務：scheduled_components")
     if not TELEGRAM_CHAT_ID:
         logger.error("定時任務 scheduled_components 無法執行：未設定 TELEGRAM_CHAT_ID")
         return
 
-    bot = app.bot
+    bot = context.bot
     chat_id = TELEGRAM_CHAT_ID
     media_group = []
     chart_files_to_delete = []
@@ -588,6 +589,107 @@ async def scheduled_components(app: Application):
                 except Exception as e:
                     logger.error(f"刪除定時任務圖表文件 {f_path} 時發生錯誤: {e}")
 
+async def test_scheduler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """測試定時任務（手動觸發）"""
+    chat_id = update.effective_chat.id
+    logger.info(f"收到來自 chat_id {chat_id} 的 /test_scheduler 命令")
+    
+    await update.message.reply_text("開始測試定時任務，將依次執行恐懼與貪婪指數更新和組件圖表發送。")
+    
+    try:
+        # 記錄測試觸發的信息
+        logger.info(f"手動觸發定時任務測試，當前使用的 Chat ID: {chat_id}")
+        
+        # 顯示目前設定的 TELEGRAM_CHAT_ID
+        configured_chat_id = TELEGRAM_CHAT_ID
+        await update.message.reply_text(f"當前配置的 TELEGRAM_CHAT_ID: {configured_chat_id}")
+        
+        # 為了測試，將發送到觸發命令的 chat_id
+        await update.message.reply_text("正在執行 Fear & Greed 指數更新測試...")
+        await scheduled_feargreed(context)
+        
+        await update.message.reply_text("正在執行組件圖表更新測試...")
+        await scheduled_components(context)
+        
+        await update.message.reply_text("定時任務測試完成！如果您沒收到更新，請檢查日誌獲取錯誤信息。")
+    except Exception as e:
+        logger.error(f"測試定時任務時發生錯誤: {e}", exc_info=True)
+        await update.message.reply_text(f"測試過程中出錯: {str(e)}")
+
+async def run_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """立即執行排程任務（用於測試）"""
+    chat_id = update.effective_chat.id
+    logger.info(f"收到來自 chat_id {chat_id} 的 /run_now 命令")
+    
+    # 檢查參數
+    if context.args and len(context.args) > 0:
+        job_type = context.args[0].lower()
+        
+        await update.message.reply_text(f"正在立即執行任務：{job_type}")
+        
+        try:
+            global TELEGRAM_CHAT_ID  # 聲明全局變量，只需要在函數開始時聲明一次
+            
+            # 根據指定的任務類型執行相應的任務
+            if job_type == "feargreed":
+                # 臨時覆蓋 TELEGRAM_CHAT_ID，發送到當前聊天
+                original_chat_id = TELEGRAM_CHAT_ID
+                # 不需要重複聲明 global
+                TELEGRAM_CHAT_ID = str(chat_id)
+                
+                logger.info(f"臨時將 TELEGRAM_CHAT_ID 從 {original_chat_id} 更改為 {chat_id} 用於測試")
+                await scheduled_feargreed(context)
+                
+                # 恢復原始 CHAT_ID
+                TELEGRAM_CHAT_ID = original_chat_id
+                logger.info(f"已恢復 TELEGRAM_CHAT_ID 為 {TELEGRAM_CHAT_ID}")
+                
+            elif job_type == "components":
+                # 臨時覆蓋 TELEGRAM_CHAT_ID，發送到當前聊天
+                original_chat_id = TELEGRAM_CHAT_ID
+                # 不需要重複聲明 global
+                TELEGRAM_CHAT_ID = str(chat_id)
+                
+                logger.info(f"臨時將 TELEGRAM_CHAT_ID 從 {original_chat_id} 更改為 {chat_id} 用於測試")
+                await scheduled_components(context)
+                
+                # 恢復原始 CHAT_ID
+                TELEGRAM_CHAT_ID = original_chat_id
+                logger.info(f"已恢復 TELEGRAM_CHAT_ID 為 {TELEGRAM_CHAT_ID}")
+                
+            elif job_type == "all":
+                # 臨時覆蓋 TELEGRAM_CHAT_ID，發送到當前聊天
+                original_chat_id = TELEGRAM_CHAT_ID
+                # 不需要重複聲明 global
+                TELEGRAM_CHAT_ID = str(chat_id)
+                
+                logger.info(f"臨時將 TELEGRAM_CHAT_ID 從 {original_chat_id} 更改為 {chat_id} 用於測試")
+                await scheduled_feargreed(context)
+                await scheduled_components(context)
+                
+                # 恢復原始 CHAT_ID
+                TELEGRAM_CHAT_ID = original_chat_id
+                logger.info(f"已恢復 TELEGRAM_CHAT_ID 為 {TELEGRAM_CHAT_ID}")
+                
+            else:
+                await update.message.reply_text(
+                    "無效的任務類型。請使用 /run_now feargreed、/run_now components 或 /run_now all"
+                )
+                return
+                
+            await update.message.reply_text("任務執行完成！")
+            
+        except Exception as e:
+            logger.error(f"執行任務時發生錯誤: {e}", exc_info=True)
+            await update.message.reply_text(f"執行任務時發生錯誤: {str(e)}")
+    else:
+        await update.message.reply_text(
+            "請指定要執行的任務類型：\n"
+            "/run_now feargreed - 執行 Fear & Greed 指數更新\n"
+            "/run_now components - 執行組件圖表更新\n"
+            "/run_now all - 執行所有定時任務"
+        )
+
 if __name__ == '__main__':
     logger.info("機器人啟動中...")
 
@@ -601,6 +703,14 @@ if __name__ == '__main__':
        exit() 
     else:
         logger.info(f"定時任務將發送到 Chat ID: {TELEGRAM_CHAT_ID}")
+        # 檢查 TELEGRAM_CHAT_ID 格式
+        try:
+            # 嘗試轉換為整數，因為有些 API 調用需要整數類型的 chat_id
+            int(TELEGRAM_CHAT_ID)
+            logger.info("TELEGRAM_CHAT_ID 格式有效 (整數)")
+        except ValueError:
+            # 不是整數，可能是頻道ID(@channel)或其他格式
+            logger.warning("TELEGRAM_CHAT_ID 不是整數類型，這可能會在某些情況下導致問題")
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -608,37 +718,36 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("feargreed", feargreed))
     application.add_handler(CommandHandler("components", components))
+    application.add_handler(CommandHandler("test_scheduler", test_scheduler))  # 測試命令
+    application.add_handler(CommandHandler("run_now", run_now))  # 立即執行排程任務命令
 
-    # --- 新增：設定並啟動排程器 ---
+    # --- 修改：使用 python-telegram-bot 內建的 job_queue 代替 APScheduler ---
     try:
-        scheduler = AsyncIOScheduler(timezone=pytz.timezone('Asia/Taipei'))
+        # 設定台北時區
+        taipei_tz = pytz.timezone('Asia/Taipei')
         
-        # 每天早上 8:00 執行 scheduled_feargreed
-        scheduler.add_job(
-            scheduled_feargreed, 
-            trigger=CronTrigger(hour=8, minute=0, second=0), 
-            args=[application], # 將 application 實例傳遞給任務
-            id='job_feargreed', # 為任務指定 ID
-            replace_existing=True # 如果已存在同 ID 任務則替換
+        # 每天晚上 8:00 執行 scheduled_feargreed
+        # 注意：job_queue 使用 UTC 時間，需要計算與台北時間的差異
+        # 台北時間 GMT+8，所以從台北時間減去 8 小時得到 UTC 時間
+        application.job_queue.run_daily(
+            callback=scheduled_feargreed,
+            time=datetime.time(hour=20, minute=0, second=0, tzinfo=taipei_tz),
+            name='job_feargreed'
         )
-        logger.info("已安排 scheduled_feargreed 任務在每天 08:00 (Asia/Taipei) 執行。")
+        logger.info("已安排 scheduled_feargreed 任務在每天 20:00 (Asia/Taipei) 執行。")
 
-        # 每天早上 8:01 執行 scheduled_components (稍微錯開)
-        scheduler.add_job(
-            scheduled_components, 
-            trigger=CronTrigger(hour=8, minute=1, second=0), 
-            args=[application], # 將 application 實例傳遞給任務
-            id='job_components', # 為任務指定 ID
-            replace_existing=True
+        # 每天晚上 8:01 執行 scheduled_components (稍微錯開)
+        application.job_queue.run_daily(
+            callback=scheduled_components,
+            time=datetime.time(hour=20, minute=1, second=0, tzinfo=taipei_tz),
+            name='job_components'
         )
-        logger.info("已安排 scheduled_components 任務在每天 08:01 (Asia/Taipei) 執行。")
-
-        scheduler.start()
-        logger.info("排程器已啟動。")
+        logger.info("已安排 scheduled_components 任務在每天 20:01 (Asia/Taipei) 執行。")
+        
+        logger.info("排程任務已設置完成。")
         
     except Exception as e:
-        logger.error(f"初始化或啟動排程器時發生錯誤: {e}", exc_info=True)
-        # 即使排程器失敗，仍然嘗試運行 polling 以處理手動命令
+        logger.error(f"設定排程任務時發生錯誤: {e}", exc_info=True)
     # --- 排程器設定結束 ---
 
     logger.info("機器人正在啟動 polling 模式以監聽手動命令...")
