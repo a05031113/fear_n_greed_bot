@@ -690,6 +690,49 @@ async def run_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/run_now all - 執行所有定時任務"
         )
 
+async def check_env(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """檢查環境變數設置"""
+    chat_id = update.effective_chat.id
+    logger.info(f"收到來自 chat_id {chat_id} 的 /check_env 命令")
+    
+    try:
+        # 檢查 TELEGRAM_BOT_TOKEN
+        bot_token = TELEGRAM_BOT_TOKEN
+        bot_token_status = "✅ 已設置" if bot_token else "❌ 未設置"
+        bot_token_display = f"{bot_token[:5]}...{bot_token[-5:]}" if bot_token else "無"
+        
+        # 檢查 TELEGRAM_CHAT_ID
+        chat_id_env = TELEGRAM_CHAT_ID
+        chat_id_status = "✅ 已設置" if chat_id_env else "❌ 未設置"
+        chat_id_display = chat_id_env if chat_id_env else "無"
+        
+        # 檢查排程任務設置
+        scheduler_status = "✅ 已設置" if hasattr(application, 'job_queue') and application.job_queue.jobs() else "❌ 未設置"
+        
+        # 構建回應訊息
+        message = (
+            "🔍 *環境變數檢查結果*\n\n"
+            f"TELEGRAM_BOT_TOKEN: {bot_token_status}\n"
+            f"Token 值: `{bot_token_display}`\n\n"
+            f"TELEGRAM_CHAT_ID: {chat_id_status}\n"
+            f"Chat ID: `{chat_id_display}`\n\n"
+            f"排程任務: {scheduler_status}\n"
+        )
+        
+        # 如果排程任務已設置，顯示詳細信息
+        if scheduler_status == "✅ 已設置":
+            jobs = application.job_queue.jobs()
+            message += "\n*排程任務詳情:*\n"
+            for job in jobs:
+                job_time = job.next_t.strftime("%H:%M:%S") if job.next_t else "未知"
+                message += f"- {job.name}: 下次執行時間 {job_time}\n"
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"檢查環境變數時發生錯誤: {e}", exc_info=True)
+        await update.message.reply_text(f"檢查環境變數時發生錯誤: {str(e)}")
+
 if __name__ == '__main__':
     logger.info("機器人啟動中...")
 
@@ -720,26 +763,30 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler("components", components))
     application.add_handler(CommandHandler("test_scheduler", test_scheduler))  # 測試命令
     application.add_handler(CommandHandler("run_now", run_now))  # 立即執行排程任務命令
+    application.add_handler(CommandHandler("check_env", check_env))  # 檢查環境變數命令
 
     # --- 修改：使用 python-telegram-bot 內建的 job_queue 代替 APScheduler ---
     try:
         # 設定台北時區
         taipei_tz = pytz.timezone('Asia/Taipei')
         
+        # 計算 UTC 時間（因為 job_queue 使用 UTC）
+        # 台北時間 20:00 = UTC 12:00
+        utc_time = datetime.time(hour=12, minute=0, second=0)
+        
         # 每天晚上 8:00 執行 scheduled_feargreed
-        # 注意：job_queue 使用 UTC 時間，需要計算與台北時間的差異
-        # 台北時間 GMT+8，所以從台北時間減去 8 小時得到 UTC 時間
         application.job_queue.run_daily(
             callback=scheduled_feargreed,
-            time=datetime.time(hour=20, minute=0, second=0, tzinfo=taipei_tz),
+            time=utc_time,
             name='job_feargreed'
         )
         logger.info("已安排 scheduled_feargreed 任務在每天 20:00 (Asia/Taipei) 執行。")
 
         # 每天晚上 8:01 執行 scheduled_components (稍微錯開)
+        utc_time_components = datetime.time(hour=12, minute=1, second=0)
         application.job_queue.run_daily(
             callback=scheduled_components,
-            time=datetime.time(hour=20, minute=1, second=0, tzinfo=taipei_tz),
+            time=utc_time_components,
             name='job_components'
         )
         logger.info("已安排 scheduled_components 任務在每天 20:01 (Asia/Taipei) 執行。")
